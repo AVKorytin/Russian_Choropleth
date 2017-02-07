@@ -62,10 +62,29 @@ p <- ggplot(data = rus, aes(x = long, y = lat, group = group)) +
         guides(fill=FALSE)
 plot(p)
 
+#District map
+r <- readRDS("RUS_adm2.rds")
+u <- readRDS("UKR_adm2.rds")
+for(i in which(r$NAME_1=="Chukot")) {
+        for(j in 1:length(r@polygons[[i]]@Polygons)) {
+                r@polygons[[i]]@Polygons[[j]]@coords[,1] <-
+                        sapply(r@polygons[[i]]@Polygons[[j]]@coords[,1],function(x) ifelse(x<0,359.999+x,x))
+        }}
+r@bbox[1,1] <- 0
+cr <- u[u$NAME_1 %in% c("Sevastopol'","Crimea"),]
+for(i in 1:length(cr@polygons)) cr@polygons[[i]]@ID <- paste0("u", cr@polygons[[i]]@ID)
+row.names(cr@data) <- sapply(cr@polygons, function(x) x@ID)
+r2 <- getSmallPolys(rbind(r, cr))
+r2@polygons <- lapply(r2@polygons, "comment<-", NULL)
+sr <- rgeos::gSimplify(spgeom = r2, tol = 0.05, topologyPreserve = FALSE)
 
-
-
-
+x_ <- SpatialPolygonsDataFrame(sr, r2@data[1:2038,], match.ID = TRUE)
+#x <- merge(fortify(x_, region = "ID_2"), x_@data, by.x = "id", by.y = "ID_2", all.x = TRUE)
+p <- ggplot(data = x_, aes(x = long, y = lat, group = group)) + 
+        geom_polygon(aes(fill = group), color = "white") + 
+        coord_map(projection = 'azequidist') +
+        guides(fill=FALSE)
+p
 
 
 getSmallPolys <- function(poly, minarea=0.01) {
