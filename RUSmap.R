@@ -1,3 +1,4 @@
+#-----------------------------------------------------------------------------------------
 library(RCurl)
 url <- "http://upload.wikimedia.org/wikibooks/en/a/a8/XML_example_polygon.svg"
 svg <- getURL(url)
@@ -11,11 +12,8 @@ p <- xpathSApply(doc, "//polygon", xmlGetAttr, "points")
 p <- lapply( strsplit(p, " "), function(u) 
         matrix(as.numeric(unlist(strsplit(u, ","))),ncol=2,byrow=TRUE) )
 
-
-areas <- lapply(gadm2@polygons, function(x) sapply(x@Polygons, function(y) y@area))
-print(quantile(unlist(areas)))
-qplot(unlist(areas), xlim = c(-1, 2), binwidth = 0.01)
-
+#-----------------------------------------------------------------------------------------
+#Region map
 require(sp)
 require(ggplot2)
 require(maptools)
@@ -57,12 +55,15 @@ gadm4@polygons <- lapply(gadm4@polygons, "comment<-", NULL)
 rus <- merge(fortify(gadm4, region = "ID_1"), gadm4@data, by.x = "id", by.y = "ID_1", all.x = TRUE)
 saveRDS(rus, "rus.Rds")
 p <- ggplot(data = rus, aes(x = long, y = lat, group = group)) + 
-        geom_polygon(aes(fill = TYPE_1), color = "white") + 
+        geom_polygon(aes(fill = LGF/LG), color = "white") + 
         coord_map(projection = 'azequidist') +
-        guides(fill=FALSE)
+        guides(fill=FALSE) +
+        geom_text(aes(x = x, y = y, label = substr(HASC_1,4,5)), colour = "white", size = 3, fontface = 2)
 plot(p)
 
+#-----------------------------------------------------------------------------------------
 #District map
+require(ggplot2)
 r <- readRDS("RUS_adm2.rds")
 u <- readRDS("UKR_adm2.rds")
 for(i in which(r$NAME_1=="Chukot")) {
@@ -74,17 +75,23 @@ r@bbox[1,1] <- 0
 cr <- u[u$NAME_1 %in% c("Sevastopol'","Crimea"),]
 for(i in 1:length(cr@polygons)) cr@polygons[[i]]@ID <- paste0("u", cr@polygons[[i]]@ID)
 row.names(cr@data) <- sapply(cr@polygons, function(x) x@ID)
-r2 <- getSmallPolys(rbind(r, cr))
-r2@polygons <- lapply(r2@polygons, "comment<-", NULL)
-sr <- rgeos::gSimplify(spgeom = r2, tol = 0.05, topologyPreserve = FALSE)
-
-x_ <- SpatialPolygonsDataFrame(sr, r2@data[1:2038,], match.ID = TRUE)
-#x <- merge(fortify(x_, region = "ID_2"), x_@data, by.x = "id", by.y = "ID_2", all.x = TRUE)
-p <- ggplot(data = x_, aes(x = long, y = lat, group = group)) + 
-        geom_polygon(aes(fill = group), color = "white") + 
+r1 <- getSmallPolys(rbind(r, cr))
+r1@polygons <- lapply(r1@polygons, "comment<-", NULL)
+sr <- rgeos::gSimplify(spgeom = r1, tol = 0.01, topologyPreserve = T)
+r1@data$area <- sapply(r1@polygons, function(x) sum(sapply(x@Polygons, function(y) y@area)))
+r2 <- SpatialPolygonsDataFrame(sr, r1@data, match.ID = TRUE)
+saveRDS(r2, "r2.Rds")
+rd <- merge(fortify(r2, region = "ID_2"), r2@data, by.x = "id", by.y = "ID_2", all.x = TRUE)
+saveRDS(rd, "rd.Rds")
+ggplot(data = rd, aes(x = long, y = lat, group = group)) + 
+        geom_polygon(aes(color = factor(ID_1)), fill = "white") + 
         coord_map(projection = 'azequidist') +
         guides(fill=FALSE)
-p
+
+f <- read.csv2("reliefs.csv", stringsAsFactors = F)
+df <- cbind(df[,1:9], f)
+rus <- merge(fortify(gadm4, region = "ID_1"), df, by.x = "id", by.y = "ID_1", all.x = TRUE)
+
 
 
 getSmallPolys <- function(poly, minarea=0.01) {
@@ -95,8 +102,8 @@ getSmallPolys <- function(poly, minarea=0.01) {
         print(quantile(unlist(areas)))
         
         # Which are the big polygons?
-        bigpolys <- lapply(areas, function(x) which(x > minarea))
-        length(unlist(bigpolys))
+        bigpolys <- lapply(areas, function(x) which(x>minarea | x==max(x)))
+        #length(unlist(bigpolys))
         
         # Get only the big polygons
         for(i in 1:length(bigpolys)) {
